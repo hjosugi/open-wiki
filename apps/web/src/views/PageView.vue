@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { Api, type Page } from '@/lib/api'
 import { paramToPath } from '@/router'
 import { useAuth } from '@/stores/auth'
+import EmptyState from '@/components/EmptyState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import PageToc from '@/components/PageToc.vue'
 
 const route = useRoute()
@@ -43,35 +45,24 @@ watch(path, load, { immediate: true })
 
   <div v-else-if="page" class="flex gap-8">
     <article class="flex-1 min-w-0">
-      <div class="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight">{{ page.title }}</h1>
-          <p class="text-gray-400 text-sm mt-1 font-mono">/{{ page.path }}</p>
-        </div>
-        <RouterLink
-          v-if="auth.canEdit"
-          :to="'/_edit/' + page.path"
-          class="btn-ghost shrink-0"
-        >
-          Edit
-        </RouterLink>
-      </div>
+      <PageHeader :page="page" :can-edit="auth.canEdit" />
       <div class="prose dark:prose-invert max-w-none" v-html="page.renderedHtml"></div>
     </article>
 
     <PageToc v-if="toc.length" :entries="toc" class="hidden lg:block w-56 shrink-0" />
   </div>
 
-  <div v-else class="card p-8 text-center">
-    <p class="text-gray-500 mb-1">
-      There's no page at <code class="font-mono">/{{ path }}</code> yet.
-    </p>
-    <p v-if="error" class="text-xs text-gray-400 mb-4">{{ error }}</p>
-    <div class="mt-4">
+  <EmptyState
+    v-else
+    title="This page does not exist yet"
+    :message="`/${path}`"
+  >
+    <template #actions>
       <RouterLink v-if="auth.canEdit" :to="{ name: 'new', query: { path } }" class="btn-primary">
         Create this page
       </RouterLink>
       <RouterLink v-else to="/_login" class="btn-ghost">Sign in to create it</RouterLink>
-    </div>
-  </div>
+    </template>
+    <p v-if="error" class="text-xs text-gray-400 mt-4">{{ error }}</p>
+  </EmptyState>
 </template>

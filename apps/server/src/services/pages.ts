@@ -46,6 +46,7 @@ export interface PageService {
   getByPath(path: string): Result<Page, AppError>
   create(input: PageInput, principal: Principal | null): Result<Page, AppError>
   update(path: string, patch: UpdatePagePatch, principal: Principal | null): Result<Page, AppError>
+  move(oldPath: string, newPath: string, principal: Principal | null): Result<Page, AppError>
   remove(path: string, principal: Principal | null): Result<{ path: string }, AppError>
 }
 
@@ -186,6 +187,55 @@ export const createPageService = (db: DB): PageService => {
           .run()
 
         reindex(current.id, v.title, v.description, v.content)
+        return findById(current.id)
+      })
+
+      return ok(page)
+    },
+
+    move(oldPath, newPath, principal) {
+      if (!can(principal, 'page:write')) return err(forbidden())
+
+      const current = findByPath(oldPath)
+      if (!current) return err(notFound(`No page at "${oldPath}"`))
+
+      const validated = validatePageInput({
+        path: newPath,
+        title: current.title,
+        content: current.content,
+        description: current.description,
+      })
+      if (!validated.ok) return validated
+      const v = validated.value
+
+      if (v.path === current.path) return ok(current)
+      if (findByPath(v.path)) return err(conflict(`A page already exists at "${v.path}"`))
+
+      const now = Date.now()
+      const page = db.transaction((tx) => {
+        tx.insert(pageRevisions)
+          .values({
+            id: crypto.randomUUID(),
+            pageId: current.id,
+            path: current.path,
+            title: current.title,
+            description: current.description,
+            content: current.content,
+            authorId: principal?.id ?? null,
+            action: 'moved',
+            createdAt: now,
+          })
+          .run()
+
+        tx.update(pages)
+          .set({
+            path: v.path,
+            updatedAt: now,
+          })
+          .where(eq(pages.id, current.id))
+          .run()
+
+        reindex(current.id, current.title, current.description, current.content)
         return findById(current.id)
       })
 

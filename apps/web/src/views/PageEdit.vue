@@ -15,6 +15,7 @@ const pagesStore = usePages()
 const isEdit = computed(() => route.name === 'edit')
 const title = ref('')
 const path = ref('')
+const originalPath = ref('')
 const content = ref('')
 const saving = ref(false)
 const error = ref<string | null>(null)
@@ -30,6 +31,7 @@ onMounted(async () => {
       const page = await Api.getPage(target)
       title.value = page.title
       path.value = page.path
+      originalPath.value = page.path
       content.value = page.content
     } catch (e) {
       error.value = (e as Error).message
@@ -46,7 +48,15 @@ async function save(): Promise<void> {
   error.value = null
   try {
     if (isEdit.value) {
-      await Api.updatePage(path.value, { title: title.value, content: content.value })
+      const updated = await Api.updatePage(originalPath.value, { title: title.value, content: content.value })
+      if (path.value !== originalPath.value) {
+        const moved = await Api.movePage(originalPath.value, path.value)
+        path.value = moved.path
+        originalPath.value = moved.path
+      } else {
+        path.value = updated.path
+        originalPath.value = updated.path
+      }
     } else {
       await Api.createPage({ path: path.value, title: title.value, content: content.value })
     }
@@ -76,8 +86,7 @@ async function remove(): Promise<void> {
       <input v-model="title" class="input flex-1 min-w-50 text-lg font-semibold" placeholder="Page title" />
       <input
         v-model="path"
-        :disabled="isEdit"
-        class="input font-mono text-sm max-w-xs disabled:opacity-60"
+        class="input font-mono text-sm max-w-xs"
         placeholder="path/to/page"
       />
       <button class="btn-primary" :disabled="saving || !title || !path" @click="save">

@@ -24,16 +24,16 @@ things are the way they are, what bit us, and exactly where to plug in the next 
 | Users + auth (local + JWT) | ✅ | bcrypt via `Bun.password`; first account → admin |
 | Assets upload | ⚠️ partial | endpoint + static serving + DB row exist; **no UI** yet |
 | Elysia HTTP app + Eden type | ✅ | exports `App`; error mapping centralised |
-| Vue app: view/edit/search/login | ✅ | builds to ~43 KB gzip reader bundle |
+| Vue app: view/edit/search/login | ✅ | breadcrumbs, page header actions, tree sidebar, empty states |
 | Markdown editor (CodeMirror) | ✅ | split editor + live preview using the *same* core renderer |
-| Tests / typecheck / build | ✅ | 17 tests pass; all 3 packages typecheck; web builds |
+| Tests / typecheck / build | ✅ | 19 tests pass; all 3 packages typecheck; web builds |
 | Auth route guards in router | ⚠️ basic | `PageEdit` redirects if not editor; no global nav guard |
 
 ### Verified during the build (evidence)
-- `bun run test` → **17 pass / 0 fail** (`packages/core/src/core.test.ts`, `apps/server/src/server.test.ts`).
+- `bun run test` → **19 pass / 0 fail** (`packages/core/src/core.test.ts`, `apps/server/src/server.test.ts`).
 - Live API via curl: register/login, 403 for anon writes, path normalization, render-on-save,
-  search ranking+snippets, reindex-on-update, delete → 404.
-- Eden Treaty client: every call shape (`get`/`post` body/`put` body+query/`delete` body+query/`search`) hit the live server successfully.
+  search ranking+snippets, reindex-on-update, move, delete → 404.
+- Eden Treaty client: every call shape (`get`/`post` body/`put` body+query/`move` body/`delete` body+query/`search`) hit the live server successfully.
 - `bun --filter '@wiki/web' build` → clean; `vue-tsc`, core & server `tsc` → 0 errors.
 
 ---
@@ -113,19 +113,52 @@ Cross-cutting principles (the "FP-leaning architecture" the user asked for):
 
 ## 5. Roadmap — next steps, prioritised
 
+Product direction from 2026-06-14 onward: **prioritise everyday usability and reusable UI
+components over storage/search breadth**. Keep SQLite + FTS5 and the current storage model simple
+until the wiki feels excellent to browse, create, edit, reorganise, and recover from mistakes.
+
+Reference patterns worth borrowing:
+- **BookStack** (`https://www.bookstackapp.com/`): page revisions, image management, and simple
+  content organisation are core UX.
+- **Outline** (`https://www.getoutline.com/`): fast document/collection workflows, quick creation,
+  and document-level sharing are more important than backend variety.
+- **Docusaurus** (`https://docusaurus.io/docs/sidebar`): generated sidebars/categories and
+  predictable docs navigation make large docs feel navigable without manual bookkeeping.
+- **Wiki.js** (`https://docs.requarks.io/`): structured page tree navigation, assets, editors, and
+  page management are the practical surface users touch daily.
+
 Each item notes **where to plug in**.
 
 **High value, low effort**
-- [ ] **Page rename / move** — add `move(oldPath, newPath, principal)` to `pages.ts` (new revision
-      with `action:'moved'`, update path + FTS row); add a UI affordance in `PageEdit.vue`.
+- [x] **Reader chrome components** — added `PageHeader`, `WikiBreadcrumbs`, `PageTree`, and
+      `EmptyState`; page view now has copy-path, edit, new-child, updated-at metadata, and a
+      structured sidebar without API changes.
+- [x] **Page rename / move** — `move(oldPath, newPath, principal)` in `pages.ts`; `POST /api/page/move`;
+      `Api.movePage()`; editable path in `PageEdit.vue`; tests cover path normalization, FTS preservation,
+      and conflict refusal.
 - [ ] **Page history UI** — data already exists in `page_revisions`. Add `getRevisions(path)` to
       `pages.ts`, a route, an `Api.history()` call, and a `HistoryView.vue` (diff via `diff` lib).
 - [ ] **Asset image UI** — endpoint exists (`POST /api/assets`). Wire an upload button +
       drag-drop into `MarkdownEditor.vue` that inserts `![](/assets/…)`.
+- [ ] **Editor ergonomics** — add toolbar buttons for heading/bold/link/image/code/table, upload
+      and paste-image affordances, unsaved-change warning, and a clearer save/error/status strip
+      in `MarkdownEditor.vue` / `PageEdit.vue`.
+- [ ] **Quick switcher / command palette** — keyboard-first `Cmd/Ctrl+K` for search, jump to page,
+      create page, and common edit actions. This should sit in `AppHeader.vue` + a new modal
+      component and can reuse `Api.listPages()` / `Api.search()`.
+- [ ] **Templates / starter pages** — let `_new` prefill from templates such as "Decision",
+      "How-to", "Meeting notes", and "Spec". Keep this web-only first; persist templates later if
+      users actually need custom ones.
 - [ ] **Global router auth guard** — centralise the `canEdit` redirect (currently only in
       `PageEdit.vue onMounted`) into `router.beforeEach`.
 
 **Medium**
+- [ ] **Backlinks + linked mentions** — parse `[[Page Path]]` / normal links from markdown render
+      output or page content, show "Linked from" on `PageView.vue`, and make missing links one-click
+      page creation. This is a major wiki feel upgrade.
+- [ ] **Navigation management** — evolve the generated tree into collapsible folders, recent pages,
+      starred pages, and optional manual ordering. Avoid building a heavy collection model until
+      the component behavior is proven.
 - [ ] **Markdown plugins** — KaTeX math, Mermaid/diagrams, footnotes already partly in markdown-it.
       Add in `packages/core/src/markdown.ts` (stays isomorphic → server render + live preview both
       get it for free).
@@ -138,8 +171,9 @@ Each item notes **where to plug in**.
 
 **Larger / later**
 - [ ] OAuth/OIDC strategies (structure: a `modules/auth/*` registry like Wiki.js, but typed).
-- [ ] Postgres option (swap Drizzle dialect; port FTS to `tsvector`).
-- [ ] Comments, tags, navigation trees, multi-site, i18n, SSR.
+- [ ] Comments, tags, multi-site, i18n, SSR.
+- [ ] Postgres option / search engine variety. Explicitly **deprioritised** for now; only revisit
+      after the component/editor/navigation experience is strong.
 
 ---
 
@@ -180,7 +214,8 @@ apps/web/src/
   lib/api.ts       Eden Treaty client + Api.* methods (the only place treaty is used)
   stores/          auth.ts, pages.ts (Pinia)
   router/index.ts  routes (/_login /_search /_new /_edit/:path /:path) + paramToPath()
-  components/      AppHeader.vue, MarkdownEditor.vue, PageToc.vue
+  components/      AppHeader.vue, MarkdownEditor.vue, PageHeader.vue, PageTree.vue,
+                   WikiBreadcrumbs.vue, EmptyState.vue, PageToc.vue
   views/           PageView.vue, PageEdit.vue, SearchView.vue, LoginView.vue
   main.ts, App.vue, app.css, uno.config.ts, vite.config.ts
 ```
@@ -210,7 +245,7 @@ server's render-on-save and the editor's live preview both pick it up automatica
 bun install
 bun run db:seed     # admin@example.com / password  + sample pages
 bun run dev         # server :4000 + web :5180
-bun run test        # 17 tests
+bun run test        # 19 tests
 bun run typecheck   # all workspaces
 bun run build       # web production build
 ```

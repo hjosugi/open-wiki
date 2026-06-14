@@ -40,3 +40,48 @@ html {
 .prose h3 {
   scroll-margin-top: 5rem;
 }
+
+.page-tree-row,
+.page-tree-folder {
+  display: block;
+  min-height: 1.75rem;
+  padding-top: 0.25rem;
+  padding-right: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+
+.page-tree-row {
+  color: rgb(75 85 99);
+}
+
+.page-tree-row:hover,
+.page-tree-row-active {
+  background: rgb(243 244 246);
+  color: rgb(17 24 39);
+}
+
+.page-tree-folder {
+  color: rgb(156 163 175);
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page-tree-row {
+    color: rgb(209 213 219);
+  }
+
+  .page-tree-row:hover,
+  .page-tree-row-active {
+    background: rgb(31 41 55);
+    color: rgb(249 250 251);
+  }
+
+  .page-tree-folder {
+    color: rgb(107 114 128);
+  }
+}

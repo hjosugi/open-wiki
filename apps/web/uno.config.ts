@@ -19,7 +19,7 @@ export default defineConfig({
     'btn-danger': 'btn text-red-600 hover:bg-red-50 dark:hover:bg-red-950',
     input:
       'w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition',
-    card: 'rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900',
+    card: 'rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900',
     'link-quiet': 'text-violet-600 dark:text-violet-400 hover:underline underline-offset-2',
   },
 })

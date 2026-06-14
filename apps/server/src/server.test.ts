@@ -59,6 +59,33 @@ describe('page + search slice (in-memory db)', () => {
     expect(search.search('orange').hits.length).toBe(1)
   })
 
+  test('move changes the page path and preserves search index', () => {
+    const db = createDb(':memory:')
+    const { pages, search } = createServices(db)
+    pages.create({ path: 'old/path', title: 'Movable', content: 'portable pear' }, admin)
+
+    const moved = pages.move('old/path', 'New/Path', admin)
+
+    expect(moved.ok).toBe(true)
+    if (moved.ok) expect(moved.value.path).toBe('new/path')
+    expect(pages.getByPath('old/path').ok).toBe(false)
+    expect(pages.getByPath('new/path').ok).toBe(true)
+    expect(search.search('pear').hits[0]?.path).toBe('new/path')
+  })
+
+  test('move refuses to overwrite an existing page', () => {
+    const db = createDb(':memory:')
+    const { pages } = createServices(db)
+    pages.create({ path: 'one', title: 'One', content: 'one' }, admin)
+    pages.create({ path: 'two', title: 'Two', content: 'two' }, admin)
+
+    const moved = pages.move('one', 'two', admin)
+
+    expect(moved.ok).toBe(false)
+    if (!moved.ok) expect(moved.error.kind).toBe('conflict')
+    expect(pages.getByPath('one').ok).toBe(true)
+  })
+
   test('delete removes from search', () => {
     const db = createDb(':memory:')
     const { pages, search } = createServices(db)

@@ -139,6 +139,18 @@ export const createApp = ({ db, env }: AppDeps) => {
           }),
         },
       )
+      .post(
+        '/api/page/move',
+        ({ body, services, principal }) => ({
+          page: unwrap(services.pages.move(body.oldPath, body.newPath, principal)),
+        }),
+        {
+          body: t.Object({
+            oldPath: t.String(),
+            newPath: t.String(),
+          }),
+        },
+      )
       .delete(
         '/api/page',
         ({ query, services, principal }) => unwrap(services.pages.remove(query.path, principal)),

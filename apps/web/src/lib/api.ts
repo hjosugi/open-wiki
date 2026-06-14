@@ -99,6 +99,8 @@ export const Api = {
     call<{ page: Page }>(client().api.pages.post(body)).then((d) => d.page),
   updatePage: (path: string, body: { title?: string; content?: string; description?: string }) =>
     call<{ page: Page }>(client().api.page.put(body, { query: { path } })).then((d) => d.page),
+  movePage: (oldPath: string, newPath: string) =>
+    call<{ page: Page }>(client().api.page.move.post({ oldPath, newPath })).then((d) => d.page),
   deletePage: (path: string) =>
     call<{ path: string }>(client().api.page.delete(null, { query: { path } })),
 

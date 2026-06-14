@@ -4,6 +4,9 @@
 # ──────────────────────────────────────────────────────────────────────────
 /reference/
 
+# Personal study notes / scratch — local-only, NOT part of the project.
+/notes/
+
 # Dependencies
 node_modules/
 

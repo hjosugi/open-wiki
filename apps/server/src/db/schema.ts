@@ -47,7 +47,7 @@ export const pageRevisions = sqliteTable(
     description: text('description').notNull().default(''),
     content: text('content').notNull().default(''),
     authorId: text('author_id'),
-    action: text('action', { enum: ['created', 'updated', 'deleted'] }).notNull(),
+    action: text('action', { enum: ['created', 'updated', 'moved', 'deleted'] }).notNull(),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('revisions_page_idx').on(t.pageId)],
