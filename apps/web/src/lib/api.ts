@@ -76,6 +76,20 @@ export interface SearchHit {
   snippet: string
   rank: number
 }
+export interface PageGraphNode {
+  path: string
+  title: string
+  kind: 'page' | 'missing'
+}
+export interface PageGraphEdge {
+  source: string
+  target: string
+  kind: 'wikilink' | 'markdown'
+}
+export interface PageGraph {
+  nodes: PageGraphNode[]
+  edges: PageGraphEdge[]
+}
 interface AuthResult {
   token: string
   user: PublicUser
@@ -103,6 +117,7 @@ export const Api = {
     call<{ page: Page }>(client().api.page.move.post({ oldPath, newPath })).then((d) => d.page),
   deletePage: (path: string) =>
     call<{ path: string }>(client().api.page.delete(null, { query: { path } })),
+  graph: () => call<PageGraph>(client().api.graph.get()),
 
   // Search
   search: (q: string, limit = 20) =>

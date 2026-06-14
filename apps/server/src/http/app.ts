@@ -106,6 +106,7 @@ export const createApp = ({ db, env }: AppDeps) => {
 
       // ── Pages: collection ─────────────────────────────────────────────────
       .get('/api/pages', ({ services }) => ({ pages: services.pages.list() }))
+      .get('/api/graph', ({ services }) => services.pages.graph())
       .post(
         '/api/pages',
         ({ body, services, principal }) => ({ page: unwrap(services.pages.create(body, principal)) }),

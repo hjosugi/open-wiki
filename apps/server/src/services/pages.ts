@@ -24,6 +24,7 @@ import {
   validatePageInput,
   renderMarkdown,
   toPlainText,
+  extractPageLinks,
 } from '@wiki/core'
 import type { DB } from '../db/client.ts'
 import { pages, pageRevisions, type Page } from '../db/schema.ts'
@@ -35,6 +36,23 @@ export interface PageSummary {
   readonly updatedAt: number
 }
 
+export interface PageGraphNode {
+  readonly path: string
+  readonly title: string
+  readonly kind: 'page' | 'missing'
+}
+
+export interface PageGraphEdge {
+  readonly source: string
+  readonly target: string
+  readonly kind: 'wikilink' | 'markdown'
+}
+
+export interface PageGraph {
+  readonly nodes: PageGraphNode[]
+  readonly edges: PageGraphEdge[]
+}
+
 export interface UpdatePagePatch {
   readonly title?: string
   readonly content?: string
@@ -43,6 +61,7 @@ export interface UpdatePagePatch {
 
 export interface PageService {
   list(): PageSummary[]
+  graph(): PageGraph
   getByPath(path: string): Result<Page, AppError>
   create(input: PageInput, principal: Principal | null): Result<Page, AppError>
   update(path: string, patch: UpdatePagePatch, principal: Principal | null): Result<Page, AppError>
@@ -80,6 +99,34 @@ export const createPageService = (db: DB): PageService => {
         .from(pages)
         .orderBy(asc(pages.path))
         .all()
+    },
+
+    graph() {
+      const allPages = db.select().from(pages).orderBy(asc(pages.path)).all()
+      const existing = new Map(allPages.map((page) => [page.path, page]))
+      const missing = new Set<string>()
+      const edgeKeys = new Set<string>()
+      const edges: PageGraphEdge[] = []
+
+      for (const page of allPages) {
+        for (const link of extractPageLinks(page.content)) {
+          if (link.path === page.path) continue
+          if (!existing.has(link.path)) missing.add(link.path)
+          const key = `${page.path}\u0000${link.path}\u0000${link.kind}`
+          if (edgeKeys.has(key)) continue
+          edgeKeys.add(key)
+          edges.push({ source: page.path, target: link.path, kind: link.kind })
+        }
+      }
+
+      const nodes: PageGraphNode[] = [
+        ...allPages.map((page) => ({ path: page.path, title: page.title, kind: 'page' as const })),
+        ...[...missing]
+          .sort()
+          .map((path) => ({ path, title: path.split('/').at(-1) ?? path, kind: 'missing' as const })),
+      ]
+
+      return { nodes, edges }
     },
 
     getByPath(path) {

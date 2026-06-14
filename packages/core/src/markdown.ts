@@ -22,6 +22,12 @@ export interface RenderResult {
   readonly toc: TocEntry[]
 }
 
+export interface PageLink {
+  readonly path: string
+  readonly label: string
+  readonly kind: 'wikilink' | 'markdown'
+}
+
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -49,6 +55,32 @@ const md: MarkdownIt = new MarkdownIt({
 
 const headingLevel = (tag: string): number => Number.parseInt(tag.slice(1), 10) || 0
 
+const WIKI_LINK = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g
+
+interface LinkToken {
+  readonly type: string
+  readonly content: string
+  readonly children?: LinkToken[] | null
+  attrGet(name: string): string | null
+}
+
+const isExternalHref = (href: string): boolean =>
+  /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')
+
+const hrefToPagePath = (href: string): string | null => {
+  const clean = href.trim().split('#')[0]?.split('?')[0] ?? ''
+  if (!clean || isExternalHref(clean)) return null
+  const path = clean.startsWith('/') ? clean.slice(1) : clean.replace(/^\.\//, '')
+  if (!path || path.startsWith('_') || path.startsWith('assets/')) return null
+  return path
+}
+
+const addUniqueLink = (links: PageLink[], seen: Set<string>, link: PageLink): void => {
+  if (!link.path || seen.has(`${link.kind}:${link.path}`)) return
+  seen.add(`${link.kind}:${link.path}`)
+  links.push(link)
+}
+
 /**
  * Render Markdown to sanitized HTML and extract a 3-level table of contents in
  * a single parse pass.
@@ -75,6 +107,45 @@ export const renderMarkdown = (content: string): RenderResult => {
 
   const html = md.renderer.render(tokens, md.options, env)
   return { html, toc }
+}
+
+/** Extract internal page links for graph/backlinks features. */
+export const extractPageLinks = (content: string): PageLink[] => {
+  const links: PageLink[] = []
+  const seen = new Set<string>()
+
+  for (const match of (content ?? '').matchAll(WIKI_LINK)) {
+    const rawPath = match[1]?.trim() ?? ''
+    const label = (match[2]?.trim() || rawPath).trim()
+    const path = rawPath
+      .split('/')
+      .map((segment) => slugifyHeading(segment))
+      .filter(Boolean)
+      .join('/')
+    addUniqueLink(links, seen, { path, label, kind: 'wikilink' })
+  }
+
+  const tokens = md.parse(content ?? '', {})
+  const visit = (items: readonly LinkToken[]): void => {
+    for (const token of items) {
+      if (token.type === 'link_open') {
+        const href = token.attrGet('href')
+        const path = href ? hrefToPagePath(href) : null
+        if (path) {
+          const normalized = path
+            .split('/')
+            .map((segment) => slugifyHeading(segment))
+            .filter(Boolean)
+            .join('/')
+          addUniqueLink(links, seen, { path: normalized, label: path, kind: 'markdown' })
+        }
+      }
+      if (token.children?.length) visit(token.children)
+    }
+  }
+  visit(tokens as LinkToken[])
+
+  return links
 }
 
 /** Strip Markdown/HTML to plain text — used for search indexing & descriptions. */

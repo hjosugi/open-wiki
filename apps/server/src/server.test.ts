@@ -86,6 +86,22 @@ describe('page + search slice (in-memory db)', () => {
     expect(pages.getByPath('one').ok).toBe(true)
   })
 
+  test('graph exposes resolved and missing page links', () => {
+    const db = createDb(':memory:')
+    const { pages } = createServices(db)
+    pages.create({ path: 'home', title: 'Home', content: 'See [[Docs/Intro]] and [Missing](/missing).' }, admin)
+    pages.create({ path: 'docs/intro', title: 'Intro', content: 'Back to [Home](/home).' }, admin)
+
+    const graph = pages.graph()
+
+    expect(graph.nodes).toContainEqual({ path: 'home', title: 'Home', kind: 'page' })
+    expect(graph.nodes).toContainEqual({ path: 'docs/intro', title: 'Intro', kind: 'page' })
+    expect(graph.nodes).toContainEqual({ path: 'missing', title: 'missing', kind: 'missing' })
+    expect(graph.edges).toContainEqual({ source: 'home', target: 'docs/intro', kind: 'wikilink' })
+    expect(graph.edges).toContainEqual({ source: 'home', target: 'missing', kind: 'markdown' })
+    expect(graph.edges).toContainEqual({ source: 'docs/intro', target: 'home', kind: 'markdown' })
+  })
+
   test('delete removes from search', () => {
     const db = createDb(':memory:')
     const { pages, search } = createServices(db)

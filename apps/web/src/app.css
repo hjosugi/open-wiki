@@ -85,3 +85,85 @@ html {
     color: rgb(107 114 128);
   }
 }
+
+.graph-canvas {
+  min-height: 28rem;
+}
+
+.graph-edge {
+  stroke: rgb(209 213 219);
+  stroke-width: 1.4;
+}
+
+.graph-edge-markdown {
+  stroke-dasharray: 5 5;
+}
+
+.graph-edge-active {
+  stroke: rgb(124 58 237);
+  stroke-width: 2.6;
+}
+
+.graph-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.graph-node circle {
+  fill: rgb(255 255 255);
+  stroke: rgb(124 58 237);
+  stroke-width: 2;
+  transition: fill 120ms ease, stroke-width 120ms ease;
+}
+
+.graph-node text {
+  fill: rgb(55 65 81);
+  font-size: 13px;
+  paint-order: stroke;
+  stroke: rgb(255 255 255);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.graph-node-active circle,
+.graph-node:hover circle,
+.graph-node:focus-visible circle {
+  fill: rgb(237 233 254);
+  stroke-width: 3;
+}
+
+.graph-node-missing circle {
+  fill: rgb(249 250 251);
+  stroke: rgb(156 163 175);
+  stroke-dasharray: 4 4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .graph-edge {
+    stroke: rgb(55 65 81);
+  }
+
+  .graph-edge-active {
+    stroke: rgb(167 139 250);
+  }
+
+  .graph-node circle {
+    fill: rgb(17 24 39);
+  }
+
+  .graph-node text {
+    fill: rgb(229 231 235);
+    stroke: rgb(3 7 18);
+  }
+
+  .graph-node-active circle,
+  .graph-node:hover circle,
+  .graph-node:focus-visible circle {
+    fill: rgb(46 16 101);
+  }
+
+  .graph-node-missing circle {
+    fill: rgb(31 41 55);
+    stroke: rgb(107 114 128);
+  }
+}

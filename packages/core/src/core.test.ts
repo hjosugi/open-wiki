@@ -3,6 +3,7 @@ import {
   can,
   normalizePath,
   renderMarkdown,
+  extractPageLinks,
   slugifyHeading,
   toPlainText,
   validatePageInput,
@@ -37,6 +38,15 @@ describe('markdown', () => {
   })
   test('toPlainText strips formatting', () => {
     expect(toPlainText('# Hi\n\n**bold** and `code`')).toBe('Hi bold and code')
+  })
+  test('extracts wiki and markdown page links', () => {
+    expect(extractPageLinks('See [[Docs/Intro|intro]] and [Guide](/guide/start?q=1#top).')).toEqual([
+      { path: 'docs/intro', label: 'intro', kind: 'wikilink' },
+      { path: 'guide/start', label: 'guide/start', kind: 'markdown' },
+    ])
+  })
+  test('ignores external and asset links in page link extraction', () => {
+    expect(extractPageLinks('[Site](https://example.com) ![Image](/assets/a.png) [Hash](#part)')).toEqual([])
   })
 })
 
