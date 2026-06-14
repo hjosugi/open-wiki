@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Api, type Page } from '@/lib/api'
 import { paramToPath } from '@/router'
 import { useAuth } from '@/stores/auth'
+import { onWikiEvent } from '@/lib/realtime'
+import { usePresence } from '@/composables/usePresence'
 import EmptyState from '@/components/EmptyState.vue'
 import InteractiveGraph from '@/components/InteractiveGraph.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -19,6 +21,7 @@ const error = ref<string | null>(null)
 const loading = ref(false)
 
 const path = computed(() => paramToPath(route.params.path) || 'home')
+const { viewers } = usePresence(path)
 const toc = computed<{ id: string; text: string; level: number }[]>(() => {
   try {
     return JSON.parse(page.value?.toc ?? '[]')
@@ -46,6 +49,19 @@ async function load(): Promise<void> {
 }
 
 watch(path, load, { immediate: true })
+
+// Realtime: when THIS page changes elsewhere, refresh it in place (no flash).
+async function reloadInPlace(): Promise<void> {
+  try {
+    page.value = await Api.getPage(path.value)
+  } catch {
+    page.value = null // deleted or moved away → show the empty state
+  }
+}
+const stopRealtime = onWikiEvent((event) => {
+  if (event.path === path.value || event.from === path.value) void reloadInPlace()
+})
+onUnmounted(stopRealtime)
 </script>
 
 <template>
@@ -54,6 +70,19 @@ watch(path, load, { immediate: true })
   <div v-else-if="page" class="flex gap-8">
     <article class="flex-1 min-w-0">
       <PageHeader :page="page" :can-edit="auth.canEdit" />
+      <div v-if="viewers.length > 1" class="flex items-center gap-2 -mt-2 mb-4">
+        <div class="flex -space-x-2">
+          <span
+            v-for="(v, i) in viewers.slice(0, 5)"
+            :key="i"
+            :title="v.name"
+            class="w-6 h-6 rounded-full bg-violet-500 text-white text-[11px] font-medium flex items-center justify-center ring-2 ring-white dark:ring-gray-950"
+          >
+            {{ (v.name[0] ?? '?').toUpperCase() }}
+          </span>
+        </div>
+        <span class="text-xs text-gray-400">{{ viewers.length }} viewing now</span>
+      </div>
       <div class="prose dark:prose-invert max-w-none" v-html="page.renderedHtml"></div>
     </article>
 

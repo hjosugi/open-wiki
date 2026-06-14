@@ -20,6 +20,7 @@ import type { Env } from '../env.ts'
 import type { DB } from '../db/client.ts'
 import { createServices } from '../services/index.ts'
 import { createEventBus } from '../realtime/bus.ts'
+import { createPresence, dedupeViewers } from '../realtime/presence.ts'
 import { verifyPassword } from '../services/auth.ts'
 import type { User } from '../db/schema.ts'
 import { HttpError, unwrap, toErrorResponse } from './errors.ts'
@@ -42,6 +43,14 @@ const asRole = (value: unknown): Role | null =>
 export const createApp = ({ db, env }: AppDeps) => {
   const services = createServices(db)
   const bus = createEventBus()
+  const presence = createPresence()
+  // connId → live socket, for broadcasting presence updates per page.
+  const sockets = new Map<string, { send: (data: string) => unknown }>()
+  const broadcastPresence = (path: string) => {
+    const viewers = presence.list(path)
+    const message = JSON.stringify({ type: 'presence', path, viewers: dedupeViewers(viewers) })
+    for (const viewer of viewers) sockets.get(viewer.id)?.send(message)
+  }
 
   return (
     new Elysia()
@@ -221,6 +230,31 @@ export const createApp = ({ db, env }: AppDeps) => {
             connection: 'keep-alive',
           },
         })
+      })
+
+      // ── Presence (WebSocket; one connection per open page) ────────────────
+      // Identity (name/userId) comes from the query for v0 — presence is
+      // cosmetic, so we don't verify a token over the socket here.
+      .ws('/api/presence', {
+        query: t.Object({
+          path: t.String(),
+          name: t.Optional(t.String()),
+          userId: t.Optional(t.String()),
+        }),
+        open(ws) {
+          const { path, name, userId } = ws.data.query
+          sockets.set(ws.id, ws)
+          presence.join(path, ws.id, {
+            userId: userId ?? null,
+            name: (name ?? '').trim() || 'Anonymous',
+          })
+          broadcastPresence(path)
+        },
+        close(ws) {
+          sockets.delete(ws.id)
+          const path = presence.leave(ws.id)
+          if (path) broadcastPresence(path)
+        },
       })
 
       // ── Admin (each method gates on admin:access inside the service) ───────
