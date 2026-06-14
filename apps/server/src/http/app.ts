@@ -22,6 +22,7 @@ import { createServices } from '../services/index.ts'
 import { createEventBus } from '../realtime/bus.ts'
 import { createPresence, dedupeViewers } from '../realtime/presence.ts'
 import { createGitStorage, type GitConfig } from '../storage/git.ts'
+import { createCollabHub, type CollabConn } from '../realtime/collab.ts'
 import { verifyPassword } from '../services/auth.ts'
 import type { User } from '../db/schema.ts'
 import { HttpError, unwrap, toErrorResponse } from './errors.ts'
@@ -79,6 +80,19 @@ export const createApp = ({ db, env }: AppDeps) => {
     remove: (path: string) => {
       if (services.pages.remove(path, SYSTEM).ok) bus.emit({ type: 'page:changed', action: 'deleted', path })
     },
+  }
+
+  // ── Collaborative editing (Yjs relay) ─────────────────────────────────────
+  const collab = createCollabHub()
+  const collabConns = new Map<string, { room: string; conn: CollabConn }>()
+  const toBytes = (m: unknown): Uint8Array | null => {
+    if (m instanceof Uint8Array) return m
+    if (m instanceof ArrayBuffer) return new Uint8Array(m)
+    if (ArrayBuffer.isView(m)) {
+      const v = m as ArrayBufferView
+      return new Uint8Array(v.buffer, v.byteOffset, v.byteLength)
+    }
+    return null
   }
 
   return (
@@ -289,6 +303,32 @@ export const createApp = ({ db, env }: AppDeps) => {
           sockets.delete(ws.id)
           const path = presence.leave(ws.id)
           if (path) broadcastPresence(path)
+        },
+      })
+
+      // ── Collaborative editing (Yjs over WebSocket; room = page path) ───────
+      .ws('/api/collab/:room', {
+        open(ws) {
+          const room = decodeURIComponent(ws.data.params.room)
+          const conn: CollabConn = { send: (data) => ws.send(data) }
+          collabConns.set(ws.id, { room, conn })
+          collab.open(room, conn, () => {
+            const r = services.pages.getByPath(room)
+            return r.ok ? r.value.content : ''
+          })
+        },
+        message(ws, message) {
+          const entry = collabConns.get(ws.id)
+          if (!entry) return
+          const bytes = toBytes(message)
+          if (bytes) collab.message(entry.room, entry.conn, bytes)
+        },
+        close(ws) {
+          const entry = collabConns.get(ws.id)
+          if (entry) {
+            collab.close(entry.room, entry.conn)
+            collabConns.delete(ws.id)
+          }
         },
       })
 
