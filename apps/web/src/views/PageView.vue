@@ -5,13 +5,16 @@ import { Api, type Page } from '@/lib/api'
 import { paramToPath } from '@/router'
 import { useAuth } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
+import InteractiveGraph from '@/components/InteractiveGraph.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import PageToc from '@/components/PageToc.vue'
+import type { PageGraph } from '@/lib/api'
 
 const route = useRoute()
 const auth = useAuth()
 
 const page = ref<Page | null>(null)
+const graph = ref<PageGraph>({ nodes: [], edges: [] })
 const error = ref<string | null>(null)
 const loading = ref(false)
 
@@ -30,6 +33,11 @@ async function load(): Promise<void> {
   page.value = null
   try {
     page.value = await Api.getPage(path.value)
+    try {
+      graph.value = await Api.graph()
+    } catch {
+      graph.value = { nodes: [], edges: [] }
+    }
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -49,7 +57,10 @@ watch(path, load, { immediate: true })
       <div class="prose dark:prose-invert max-w-none" v-html="page.renderedHtml"></div>
     </article>
 
-    <PageToc v-if="toc.length" :entries="toc" class="hidden lg:block w-56 shrink-0" />
+    <aside class="hidden xl:block w-72 shrink-0 space-y-6">
+      <InteractiveGraph :graph="graph" :focus-path="page.path" compact />
+      <PageToc v-if="toc.length" :entries="toc" />
+    </aside>
   </div>
 
   <EmptyState

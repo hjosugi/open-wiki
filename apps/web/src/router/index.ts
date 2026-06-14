@@ -6,6 +6,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/_login', name: 'login', component: () => import('@/views/LoginView.vue') },
   { path: '/_search', name: 'search', component: () => import('@/views/SearchView.vue') },
   { path: '/_graph', name: 'graph', component: () => import('@/views/GraphView.vue') },
+  { path: '/_admin', name: 'admin', component: () => import('@/views/AdminView.vue') },
   { path: '/_new', name: 'new', component: () => import('@/views/PageEdit.vue') },
   {
     path: '/_edit/:path(.*)*',

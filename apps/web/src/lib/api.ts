@@ -90,6 +90,18 @@ export interface PageGraph {
   nodes: PageGraphNode[]
   edges: PageGraphEdge[]
 }
+export interface AdminUserView {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'editor' | 'viewer'
+  createdAt: number
+}
+export interface AdminStats {
+  users: number
+  pages: number
+  revisions: number
+}
 interface AuthResult {
   token: string
   user: PublicUser
@@ -122,4 +134,13 @@ export const Api = {
   // Search
   search: (q: string, limit = 20) =>
     call<{ query: string; hits: SearchHit[] }>(client().api.search.get({ query: { q, limit } })),
+
+  // Admin
+  adminStats: () => call<AdminStats>(client().api.admin.stats.get()),
+  adminUsers: () =>
+    call<{ users: AdminUserView[] }>(client().api.admin.users.get()).then((d) => d.users),
+  adminSetRole: (userId: string, role: 'admin' | 'editor' | 'viewer') =>
+    call<{ user: AdminUserView }>(client().api.admin.users.role.put({ userId, role })).then(
+      (d) => d.user,
+    ),
 }

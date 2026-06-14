@@ -8,6 +8,7 @@ export const useAuth = defineStore('auth', () => {
 
   const isAuthed = computed(() => user.value !== null)
   const canEdit = computed(() => user.value?.role === 'admin' || user.value?.role === 'editor')
+  const isAdmin = computed(() => user.value?.role === 'admin')
 
   async function fetchMe(): Promise<void> {
     if (!getToken()) {
@@ -41,5 +42,5 @@ export const useAuth = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, ready, isAuthed, canEdit, fetchMe, login, register, logout }
+  return { user, ready, isAuthed, canEdit, isAdmin, fetchMe, login, register, logout }
 })

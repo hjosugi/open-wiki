@@ -28,6 +28,7 @@ function submitSearch(): void {
 
       <div class="flex items-center gap-2 ml-auto">
         <RouterLink to="/_graph" class="btn-ghost">Graph</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/_admin" class="btn-ghost">Admin</RouterLink>
         <RouterLink v-if="auth.canEdit" to="/_new" class="btn-primary">+ New page</RouterLink>
         <template v-if="auth.isAuthed">
           <span class="text-sm text-gray-500 hidden sm:inline">{{ auth.user?.name }}</span>

@@ -28,8 +28,164 @@ export interface PageLink {
   readonly kind: 'wikilink' | 'markdown'
 }
 
+export interface CalendarEvent {
+  readonly title: string
+  readonly start: string
+  readonly end?: string
+  readonly timezone?: string
+  readonly location?: string
+  readonly url?: string
+  readonly description?: string
+}
+
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+const escapeAttr = (s: string): string => escapeHtml(s).replace(/'/g, '&#39;')
+
+const EVENT_KEYS = new Set(['title', 'start', 'end', 'timezone', 'location', 'url', 'description'])
+
+const parseDateParts = (value: string): { date: string; time?: string } | null => {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (!match) return null
+  const date = `${match[1]}${match[2]}${match[3]}`
+  const time = match[4] ? `${match[4]}${match[5]}${match[6] ?? '00'}` : undefined
+  return { date, time }
+}
+
+const addDays = (yyyymmdd: string, days: number): string => {
+  const year = Number(yyyymmdd.slice(0, 4))
+  const month = Number(yyyymmdd.slice(4, 6))
+  const day = Number(yyyymmdd.slice(6, 8))
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('')
+}
+
+const formatDisplayDate = (value: string, timezone?: string): string => {
+  const parsed = parseDateParts(value)
+  if (!parsed) return value
+  const year = parsed.date.slice(0, 4)
+  const month = parsed.date.slice(4, 6)
+  const day = parsed.date.slice(6, 8)
+  if (!parsed.time) return `${year}-${month}-${day}`
+  const hour = parsed.time.slice(0, 2)
+  const minute = parsed.time.slice(2, 4)
+  return `${year}-${month}-${day} ${hour}:${minute}${timezone ? ` ${timezone}` : ''}`
+}
+
+const parseEventBlock = (content: string): CalendarEvent | null => {
+  const data = new Map<string, string>()
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z][A-Za-z_-]*):\s*(.*)$/)
+    if (!match) continue
+    const key = match[1]!.toLowerCase().replace(/-/g, '')
+    const normalized = key === 'timeZone'.toLowerCase() ? 'timezone' : key
+    if (EVENT_KEYS.has(normalized)) data.set(normalized, match[2]!.trim())
+  }
+
+  const title = data.get('title')
+  const start = data.get('start')
+  if (!title || !start) return null
+
+  return {
+    title,
+    start,
+    end: data.get('end'),
+    timezone: data.get('timezone'),
+    location: data.get('location'),
+    url: data.get('url'),
+    description: data.get('description'),
+  }
+}
+
+const googleCalendarUrl = (event: CalendarEvent): string => {
+  const start = parseDateParts(event.start)
+  const end = event.end ? parseDateParts(event.end) : null
+  const allDay = Boolean(start && !start.time)
+  const startValue = start ? (start.time ? `${start.date}T${start.time}` : start.date) : event.start
+  const endValue = end
+    ? end.time
+      ? `${end.date}T${end.time}`
+      : end.date
+    : start && allDay
+      ? addDays(start.date, 1)
+      : startValue
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.title,
+    dates: `${startValue}/${endValue}`,
+  })
+  if (event.description || event.url) {
+    params.set('details', [event.description, event.url].filter(Boolean).join('\n\n'))
+  }
+  if (event.location) params.set('location', event.location)
+  if (event.timezone && !allDay) params.set('ctz', event.timezone)
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
+const escapeIcsText = (value: string): string =>
+  value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+
+const icsDateLine = (field: string, value: string): string => {
+  const parsed = parseDateParts(value)
+  if (!parsed) return `${field}:${escapeIcsText(value)}`
+  if (!parsed.time) return `${field};VALUE=DATE:${parsed.date}`
+  return `${field}:${parsed.date}T${parsed.time}`
+}
+
+const icsDataUrl = (event: CalendarEvent): string => {
+  const start = parseDateParts(event.start)
+  const allDay = Boolean(start && !start.time)
+  const end = event.end ?? (start && allDay ? `${start.date.slice(0, 4)}-${start.date.slice(4, 6)}-${start.date.slice(6, 8)}` : event.start)
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//open-wiki//event//EN',
+    'BEGIN:VEVENT',
+    `SUMMARY:${escapeIcsText(event.title)}`,
+    icsDateLine('DTSTART', event.start),
+    icsDateLine('DTEND', event.end ?? (start && allDay ? `${addDays(start.date, 1).slice(0, 4)}-${addDays(start.date, 1).slice(4, 6)}-${addDays(start.date, 1).slice(6, 8)}` : end)),
+    event.location ? `LOCATION:${escapeIcsText(event.location)}` : '',
+    event.description ? `DESCRIPTION:${escapeIcsText(event.description)}` : '',
+    event.url ? `URL:${escapeIcsText(event.url)}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean)
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join('\r\n'))}`
+}
+
+const renderEventCard = (content: string): string | null => {
+  const event = parseEventBlock(content)
+  if (!event) return null
+  const start = formatDisplayDate(event.start, event.timezone)
+  const end = event.end ? formatDisplayDate(event.end, event.timezone) : null
+  const when = end ? `${start} → ${end}` : start
+  const details = [
+    event.location ? `<div><span>Location</span><strong>${escapeHtml(event.location)}</strong></div>` : '',
+    event.url
+      ? `<div><span>Link</span><strong><a href="${escapeAttr(event.url)}" rel="noopener noreferrer">${escapeHtml(event.url)}</a></strong></div>`
+      : '',
+  ].filter(Boolean)
+
+  return `<section class="wiki-event-card">
+    <div class="wiki-event-main">
+      <p class="wiki-event-kicker">Calendar event</p>
+      <h3>${escapeHtml(event.title)}</h3>
+      <p class="wiki-event-time">${escapeHtml(when)}</p>
+      ${event.description ? `<p class="wiki-event-description">${escapeHtml(event.description)}</p>` : ''}
+      ${details.length ? `<div class="wiki-event-details">${details.join('')}</div>` : ''}
+    </div>
+    <div class="wiki-event-actions">
+      <a href="${escapeAttr(googleCalendarUrl(event))}" target="_blank" rel="noopener noreferrer">Google Calendar</a>
+      <a href="${escapeAttr(icsDataUrl(event))}" download="${escapeAttr(slugifyHeading(event.title) || 'event')}.ics">Download .ics</a>
+    </div>
+  </section>`
+}
 
 const md: MarkdownIt = new MarkdownIt({
   html: false, // never trust raw HTML in wiki content
@@ -52,6 +208,18 @@ const md: MarkdownIt = new MarkdownIt({
   level: [1, 2, 3],
   tabIndex: false,
 })
+
+const defaultFence = md.renderer.rules.fence
+md.renderer.rules.fence = (tokens, idx, options, env, self): string => {
+  const token = tokens[idx]
+  if (!token) return ''
+  const info = token?.info.trim().split(/\s+/)[0]?.toLowerCase()
+  if (info === 'event') {
+    const rendered = renderEventCard(token.content)
+    if (rendered) return rendered
+  }
+  return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options)
+}
 
 const headingLevel = (tag: string): number => Number.parseInt(tag.slice(1), 10) || 0
 

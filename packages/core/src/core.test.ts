@@ -48,6 +48,23 @@ describe('markdown', () => {
   test('ignores external and asset links in page link extraction', () => {
     expect(extractPageLinks('[Site](https://example.com) ![Image](/assets/a.png) [Hash](#part)')).toEqual([])
   })
+  test('renders calendar event fences as event cards', () => {
+    const { html } = renderMarkdown(`\`\`\`event
+title: Product review
+start: 2026-06-20 10:00
+end: 2026-06-20 10:30
+timezone: Asia/Tokyo
+location: Zoom
+url: https://example.com/meeting
+description: Weekly checkpoint
+\`\`\``)
+
+    expect(html).toContain('wiki-event-card')
+    expect(html).toContain('Product review')
+    expect(html).toContain('Google Calendar')
+    expect(html).toContain('Download .ics')
+    expect(html).toContain('20260620T100000%2F20260620T103000')
+  })
 })
 
 describe('permissions', () => {

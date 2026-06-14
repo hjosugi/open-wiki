@@ -7,12 +7,14 @@ import { createPageService, type PageService } from './pages.ts'
 import { createSearchService, type SearchService } from './search.ts'
 import { createUserService, type UserService } from './users.ts'
 import { createAssetService, type AssetService } from './assets.ts'
+import { createAdminService, type AdminService } from './admin.ts'
 
 export interface Services {
   readonly pages: PageService
   readonly search: SearchService
   readonly users: UserService
   readonly assets: AssetService
+  readonly admin: AdminService
 }
 
 export const createServices = (db: DB): Services => ({
@@ -20,6 +22,7 @@ export const createServices = (db: DB): Services => ({
   search: createSearchService(db),
   users: createUserService(db),
   assets: createAssetService(db),
+  admin: createAdminService(db),
 })
 
-export type { PageService, SearchService, UserService, AssetService }
+export type { PageService, SearchService, UserService, AssetService, AdminService }

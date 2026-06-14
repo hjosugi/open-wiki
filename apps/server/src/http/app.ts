@@ -19,6 +19,7 @@ import {
 import type { Env } from '../env.ts'
 import type { DB } from '../db/client.ts'
 import { createServices } from '../services/index.ts'
+import { createEventBus } from '../realtime/bus.ts'
 import { verifyPassword } from '../services/auth.ts'
 import type { User } from '../db/schema.ts'
 import { HttpError, unwrap, toErrorResponse } from './errors.ts'
@@ -40,6 +41,7 @@ const asRole = (value: unknown): Role | null =>
 
 export const createApp = ({ db, env }: AppDeps) => {
   const services = createServices(db)
+  const bus = createEventBus()
 
   return (
     new Elysia()
@@ -109,7 +111,11 @@ export const createApp = ({ db, env }: AppDeps) => {
       .get('/api/graph', ({ services }) => services.pages.graph())
       .post(
         '/api/pages',
-        ({ body, services, principal }) => ({ page: unwrap(services.pages.create(body, principal)) }),
+        ({ body, services, principal }) => {
+          const page = unwrap(services.pages.create(body, principal))
+          bus.emit({ type: 'page:changed', action: 'created', path: page.path })
+          return { page }
+        },
         {
           body: t.Object({
             path: t.String(),
@@ -128,9 +134,11 @@ export const createApp = ({ db, env }: AppDeps) => {
       )
       .put(
         '/api/page',
-        ({ query, body, services, principal }) => ({
-          page: unwrap(services.pages.update(query.path, body, principal)),
-        }),
+        ({ query, body, services, principal }) => {
+          const page = unwrap(services.pages.update(query.path, body, principal))
+          bus.emit({ type: 'page:changed', action: 'updated', path: page.path })
+          return { page }
+        },
         {
           query: t.Object({ path: t.String() }),
           body: t.Object({
@@ -142,9 +150,11 @@ export const createApp = ({ db, env }: AppDeps) => {
       )
       .post(
         '/api/page/move',
-        ({ body, services, principal }) => ({
-          page: unwrap(services.pages.move(body.oldPath, body.newPath, principal)),
-        }),
+        ({ body, services, principal }) => {
+          const page = unwrap(services.pages.move(body.oldPath, body.newPath, principal))
+          bus.emit({ type: 'page:changed', action: 'moved', path: page.path, from: body.oldPath })
+          return { page }
+        },
         {
           body: t.Object({
             oldPath: t.String(),
@@ -154,7 +164,11 @@ export const createApp = ({ db, env }: AppDeps) => {
       )
       .delete(
         '/api/page',
-        ({ query, services, principal }) => unwrap(services.pages.remove(query.path, principal)),
+        ({ query, services, principal }) => {
+          const result = unwrap(services.pages.remove(query.path, principal))
+          bus.emit({ type: 'page:changed', action: 'deleted', path: result.path })
+          return result
+        },
         { query: t.Object({ path: t.String() }) },
       )
 
@@ -165,6 +179,67 @@ export const createApp = ({ db, env }: AppDeps) => {
           limit: t.Optional(t.Numeric()),
         }),
       })
+
+      // ── Realtime (Server-Sent Events; any transport subscribes to the bus) ─
+      .get('/api/events', ({ request }) => {
+        const encoder = new TextEncoder()
+        let unsubscribe: (() => void) | null = null
+        let heartbeat: ReturnType<typeof setInterval> | null = null
+        const cleanup = () => {
+          unsubscribe?.()
+          unsubscribe = null
+          if (heartbeat) clearInterval(heartbeat)
+          heartbeat = null
+        }
+        const stream = new ReadableStream({
+          start(controller) {
+            const sse = (text: string) => {
+              try {
+                controller.enqueue(encoder.encode(text))
+              } catch {
+                cleanup()
+              }
+            }
+            sse(': connected\n\n')
+            unsubscribe = bus.subscribe((event) => sse(`data: ${JSON.stringify(event)}\n\n`))
+            heartbeat = setInterval(() => sse(': ping\n\n'), 25000)
+            request.signal.addEventListener('abort', () => {
+              cleanup()
+              try {
+                controller.close()
+              } catch {
+                /* already closed */
+              }
+            })
+          },
+          cancel: cleanup,
+        })
+        return new Response(stream, {
+          headers: {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+          },
+        })
+      })
+
+      // ── Admin (each method gates on admin:access inside the service) ───────
+      .get('/api/admin/stats', ({ services, principal }) => unwrap(services.admin.stats(principal)))
+      .get('/api/admin/users', ({ services, principal }) => ({
+        users: unwrap(services.admin.listUsers(principal)),
+      }))
+      .put(
+        '/api/admin/users/role',
+        ({ body, services, principal }) => ({
+          user: unwrap(services.admin.setUserRole(principal, body.userId, body.role)),
+        }),
+        {
+          body: t.Object({
+            userId: t.String(),
+            role: t.Union([t.Literal('admin'), t.Literal('editor'), t.Literal('viewer')]),
+          }),
+        },
+      )
 
       // ── Assets ────────────────────────────────────────────────────────────
       .post(

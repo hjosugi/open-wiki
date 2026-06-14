@@ -25,12 +25,12 @@ things are the way they are, what bit us, and exactly where to plug in the next 
 | Assets upload | ⚠️ partial | endpoint + static serving + DB row exist; **no UI** yet |
 | Elysia HTTP app + Eden type | ✅ | exports `App`; error mapping centralised |
 | Vue app: view/edit/search/graph/login | ✅ | breadcrumbs, page header actions, tree sidebar, graph view, empty states |
-| Markdown editor (CodeMirror) | ✅ | split editor + live preview using the *same* core renderer |
-| Tests / typecheck / build | ✅ | 22 tests pass; all 3 packages typecheck; web builds |
+| Markdown editor (CodeMirror) | ✅ | split editor + live preview; event snippet button; same core renderer |
+| Tests / typecheck / build | ✅ | 28 tests pass; all 3 packages typecheck; web builds |
 | Auth route guards in router | ⚠️ basic | `PageEdit` redirects if not editor; no global nav guard |
 
 ### Verified during the build (evidence)
-- `bun run test` → **22 pass / 0 fail** (`packages/core/src/core.test.ts`, `apps/server/src/server.test.ts`).
+- `bun run test` → **28 pass / 0 fail** (`packages/core/src/core.test.ts`, `apps/server/src/server.test.ts`, `apps/server/src/admin.test.ts`).
 - Live API via curl: register/login, 403 for anon writes, path normalization, render-on-save,
   search ranking+snippets, reindex-on-update, move, delete → 404.
 - Eden Treaty client: every call shape (`get`/`post` body/`put` body+query/`move` body/`delete` body+query/`search`/`graph`) hit the live server successfully.
@@ -116,6 +116,9 @@ Cross-cutting principles (the "FP-leaning architecture" the user asked for):
 Product direction from 2026-06-14 onward: **prioritise everyday usability and reusable UI
 components over storage/search breadth**. Keep SQLite + FTS5 and the current storage model simple
 until the wiki feels excellent to browse, create, edit, reorganise, and recover from mistakes.
+Calendar/event workflows are a priority surface: meeting notes, project events, launch dates,
+deadlines, and embedded schedules should be easy to paste into pages and easy to send into real
+calendars.
 
 Reference patterns worth borrowing:
 - **BookStack** (`https://www.bookstackapp.com/`): page revisions, image management, and simple
@@ -130,9 +133,15 @@ Reference patterns worth borrowing:
 Each item notes **where to plug in**.
 
 **High value, low effort**
+- [x] **Pasteable calendar event cards** — Markdown fences with info string `event` render as
+      `wiki-event-card` with title, time, timezone, location, URL, description, a Google Calendar
+      template link, and downloadable `.ics`; `MarkdownEditor.vue` has an `Event` snippet button.
+      This is the first calendar vertical slice and intentionally does not require OAuth.
 - [x] **Graph view** — `extractPageLinks()` in core handles `[[Wiki Links]]` and internal Markdown
-      links; `pages.graph()` returns page/missing nodes + edges; `GET /api/graph`; `GraphView.vue`
-      visualises links and backlinks, with missing nodes opening `_new?path=...`.
+      links; `pages.graph()` returns page/missing nodes + edges; `GET /api/graph`; reusable
+      `InteractiveGraph.vue` provides an Obsidian-style force graph with zoom, pan, node dragging,
+      local/global mode, depth, missing-node toggle, and node sizing by link degree. `PageView.vue`
+      shows a compact local graph in the right rail; `GraphView.vue` shows the full graph.
 - [x] **Reader chrome components** — added `PageHeader`, `WikiBreadcrumbs`, `PageTree`, and
       `EmptyState`; page view now has copy-path, edit, new-child, updated-at metadata, and a
       structured sidebar without API changes.
@@ -144,8 +153,11 @@ Each item notes **where to plug in**.
 - [ ] **Asset image UI** — endpoint exists (`POST /api/assets`). Wire an upload button +
       drag-drop into `MarkdownEditor.vue` that inserts `![](/assets/…)`.
 - [ ] **Editor ergonomics** — add toolbar buttons for heading/bold/link/image/code/table, upload
-      and paste-image affordances, unsaved-change warning, and a clearer save/error/status strip
+      and paste-image affordances, richer event insertion, unsaved-change warning, and a clearer save/error/status strip
       in `MarkdownEditor.vue` / `PageEdit.vue`.
+- [ ] **Calendar import/export UX** — add an `.ics` upload/paste parser, event preview modal, and
+      "insert into page" flow. Keep parsing in `@wiki/core` so server render and editor preview
+      agree.
 - [ ] **Quick switcher / command palette** — keyboard-first `Cmd/Ctrl+K` for search, jump to page,
       create page, and common edit actions. This should sit in `AppHeader.vue` + a new modal
       component and can reuse `Api.listPages()` / `Api.search()`.
@@ -156,6 +168,12 @@ Each item notes **where to plug in**.
       `PageEdit.vue onMounted`) into `router.beforeEach`.
 
 **Medium**
+- [ ] **Event extraction + event index** — extract all event fences from pages into a service
+      response (`/api/events`) so the app can show upcoming events, page-linked timelines, and
+      "events on this page" without adding a full calendar database yet.
+- [ ] **Google Calendar integration** — after event cards/index feel good, add optional OAuth,
+      calendar selection, import events into pages, and create/update Google Calendar events from
+      wiki event blocks. Keep this as an adapter around the event model, not the source of truth.
 - [ ] **Backlinks + linked mentions on page view** — graph extraction already exists; show
       "Linked from" directly on `PageView.vue`, and turn missing `[[links]]` into one-click page
       creation in rendered markdown.
@@ -194,7 +212,7 @@ packages/core/src/
   errors.ts        AppError union + httpStatus()                (pure)
   slug.ts          normalizePath / slugifyHeading (Unicode)     (pure)
   permissions.ts   Role, Action, can()                          (pure)
-  markdown.ts      renderMarkdown() → {html, toc}, extractPageLinks(), toPlainText
+  markdown.ts      renderMarkdown() → {html, toc}, event cards, extractPageLinks(), toPlainText
   page.ts          validatePageInput()                          (pure)
   core.test.ts     unit tests for all of the above
 
@@ -223,8 +241,8 @@ apps/web/src/
   lib/api.ts       Eden Treaty client + Api.* methods (the only place treaty is used)
   stores/          auth.ts, pages.ts (Pinia)
   router/index.ts  routes (/_login /_search /_graph /_new /_edit/:path /:path) + paramToPath()
-  components/      AppHeader.vue, MarkdownEditor.vue, PageHeader.vue, PageTree.vue,
-                   WikiBreadcrumbs.vue, EmptyState.vue, PageToc.vue
+  components/      AppHeader.vue, MarkdownEditor.vue, InteractiveGraph.vue, PageHeader.vue,
+                   PageTree.vue, WikiBreadcrumbs.vue, EmptyState.vue, PageToc.vue
   views/           PageView.vue, PageEdit.vue, SearchView.vue, GraphView.vue, LoginView.vue
   main.ts, App.vue, app.css, uno.config.ts, vite.config.ts
 ```
@@ -254,7 +272,7 @@ server's render-on-save and the editor's live preview both pick it up automatica
 bun install
 bun run db:seed     # admin@example.com / password  + sample pages
 bun run dev         # server :4000 + web :5180
-bun run test        # 22 tests
+bun run test        # 28 tests
 bun run typecheck   # all workspaces
 bun run build       # web production build
 ```
