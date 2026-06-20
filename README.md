@@ -102,6 +102,14 @@ Open <http://localhost:5180> (Vite prints the exact URL). Sign in with the seede
 | `bun run test` | Core + server tests (`bun test`) |
 | `bun run typecheck` | Typecheck all workspaces |
 
+### Hands-on Guides
+
+| Area | Guide |
+|---|---|
+| Pure functional core | [`packages/core/README.md`](packages/core/README.md) |
+| API server and SQLite/FTS workflow | [`apps/server/README.md`](apps/server/README.md) |
+| Vue front end and typed client | [`apps/web/README.md`](apps/web/README.md) |
+
 ## Multi-instance mode
 
 The server defaults to a DB-backed realtime event bus (`WIKI_EVENT_BUS=db`). Page-change events are
